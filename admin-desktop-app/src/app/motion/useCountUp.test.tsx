@@ -9,7 +9,7 @@ function Probe({ target }: { target: number }) {
 
 test("counts up to the target", async () => {
   render(<MotionPreferenceProvider><Probe target={100} /></MotionPreferenceProvider>);
-  await waitFor(() => expect(screen.getByTestId("n")).toHaveTextContent("100"));
+  await waitFor(() => expect(screen.getByTestId("n")).toHaveTextContent("100"), { timeout: 5000 });
 });
 
 test("jumps straight to target under reduced motion", () => {

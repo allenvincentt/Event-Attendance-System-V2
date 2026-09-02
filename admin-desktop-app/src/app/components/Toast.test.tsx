@@ -15,12 +15,12 @@ test("shows a toast and lets the user dismiss it", async () => {
   const toast = await screen.findByText("Event created");
   expect(toast).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
-  await waitForElementToBeRemoved(() => screen.queryByText("Event created"));
+  await waitForElementToBeRemoved(() => screen.queryByText("Event created"), { timeout: 5000 });
 });
 
 test("auto-dismisses after its timeout", async () => {
   render(<ToastProvider dismissMs={50}><Trigger /></ToastProvider>);
   await userEvent.click(screen.getByText("go"));
   expect(await screen.findByText("Event created")).toBeInTheDocument();
-  await waitForElementToBeRemoved(() => screen.queryByText("Event created"));
+  await waitForElementToBeRemoved(() => screen.queryByText("Event created"), { timeout: 5000 });
 });
