@@ -13,7 +13,7 @@ test("lists events and filters by status", async () => {
   expect(screen.queryByText("Nightly Cultural Show")).toBeNull();
 });
 
-test.skip("opens the details modal from the View action", async () => {
+test("opens the details modal from the View action", async () => {
   renderWithProviders(<EventView />);
   const row = screen.getByText("Nightly Cultural Show").closest("tr")!;
   await userEvent.click(within(row).getByRole("button", { name: /view/i }));
