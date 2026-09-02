@@ -92,7 +92,7 @@ export function DataTable<T>({
   return (
     <div style={{ border: `1px solid ${tokens.color.border.default}`, borderRadius: tokens.radius.lg, overflow: "hidden" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: tokens.font.size.bodySm }}>
-        <thead>
+        <thead style={{ position: "sticky", top: 0, zIndex: 1 }}>
           <tr style={{ background: tokens.color.surface.sunken }}>
             {selectable && (
               <th style={{ width: 44, padding: tokens.space.sm }}>
@@ -158,6 +158,7 @@ function PlainBody<T>(props: BodyProps<T>) {
 }
 
 function VirtualBody<T>(props: BodyProps<T>) {
+  const { columns, getRowKey, onRowClick, selectable, selectedKeys, toggleOne } = props;
   const parentRef = useRef<HTMLTableSectionElement>(null);
   const virt = useVirtualizer({
     count: props.rows.length,
@@ -170,10 +171,21 @@ function VirtualBody<T>(props: BodyProps<T>) {
       <tr style={{ display: "block", height: virt.getTotalSize() }} />
       {virt.getVirtualItems().map((vi) => {
         const row = props.rows[vi.index];
+        const key = getRowKey(row);
         return (
-          <tr key={props.getRowKey(row)} style={{ display: "table", tableLayout: "fixed", width: "100%", position: "absolute", top: 0, transform: `translateY(${vi.start}px)` }}>
-            {props.selectable && <td style={{ width: 44, padding: tokens.space.sm }} />}
-            {props.columns.map((c) => (
+          <tr
+            key={key}
+            onClick={() => onRowClick?.(row)}
+            style={{ display: "table", tableLayout: "fixed", width: "100%", position: "absolute", top: 0, transform: `translateY(${vi.start}px)`, borderTop: `1px solid ${tokens.color.border.default}`, cursor: onRowClick ? "pointer" : "default" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = tokens.color.brand.primarySoft)}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            {selectable && (
+              <td style={{ width: 44, padding: tokens.space.sm }} onClick={(e) => e.stopPropagation()}>
+                <Checkbox label={`Select row`} checked={!!selectedKeys?.has(key)} onChange={() => toggleOne(key)} />
+              </td>
+            )}
+            {columns.map((c) => (
               <td key={c.key} style={{ padding: `${tokens.space.sm}px ${tokens.space.md}px`, textAlign: c.align ?? "left" }}>{c.render(row)}</td>
             ))}
           </tr>
