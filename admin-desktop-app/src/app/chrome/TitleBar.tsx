@@ -9,10 +9,12 @@ interface Props {
   showMaximize?: boolean;
   isMaximized?: boolean;
   onToggleMaximize?: () => void;
+  onMinimize?: () => void;
+  onClose?: () => void;
   height?: number;
 }
 
-export function TitleBar({ title, right, showMaximize = true, isMaximized, onToggleMaximize, height = 40 }: Props) {
+export function TitleBar({ title, right, showMaximize = true, isMaximized, onToggleMaximize, onMinimize, onClose, height = 40 }: Props) {
   return (
     <div
       data-tauri-drag-region
@@ -32,7 +34,7 @@ export function TitleBar({ title, right, showMaximize = true, isMaximized, onTog
       </div>
       <div style={{ flex: 1 }} />
       {right}
-      <WindowControls showMaximize={showMaximize} isMaximized={isMaximized} onToggleMaximize={onToggleMaximize} />
+      <WindowControls showMaximize={showMaximize} isMaximized={isMaximized} onToggleMaximize={onToggleMaximize} onMinimize={onMinimize} onClose={onClose} />
     </div>
   );
 }
