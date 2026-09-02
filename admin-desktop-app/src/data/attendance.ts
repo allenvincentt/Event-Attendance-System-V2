@@ -21,6 +21,8 @@ const BASE_ENROLMENT: Record<string, number> = {
   CEE: 559, CHE: 333, CHSE: 291, CTE: 509, PS: 176, TS: 214,
 };
 
+export const departmentEnrolment = (code: string) => BASE_ENROLMENT[code] ?? 300;
+
 function figuresFor(eventId: string, deptCode: string) {
   const hand = EVENT_ATTENDANCE[eventId]?.[deptCode];
   if (hand) return hand;
