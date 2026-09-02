@@ -39,6 +39,7 @@ export function Button({
   return (
     <motion.button
       type={type}
+      disabled={inert}
       aria-disabled={disabled || undefined}
       aria-busy={loading || undefined}
       onClick={() => { if (!inert) onClick?.(); }}
