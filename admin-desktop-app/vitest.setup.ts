@@ -24,10 +24,8 @@ class IO {
   disconnect = vi.fn();
   takeRecords = vi.fn(() => []);
 }
-// @ts-expect-error test polyfill
-window.IntersectionObserver = IO;
-// @ts-expect-error test polyfill
-window.ResizeObserver = IO;
+window.IntersectionObserver = IO as unknown as typeof IntersectionObserver;
+window.ResizeObserver = IO as unknown as typeof ResizeObserver;
 
 // Default Tauri mocks — individual tests override with vi.mocked(...).
 const fakeWindow = {
