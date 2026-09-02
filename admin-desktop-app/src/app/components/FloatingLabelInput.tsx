@@ -11,9 +11,10 @@ interface Props {
   error?: string;
   icon?: IconName;
   trailing?: ReactNode;
+  autoFocus?: boolean;
 }
 
-export function FloatingLabelInput({ label, value, onChange, type = "text", error, icon, trailing }: Props) {
+export function FloatingLabelInput({ label, value, onChange, type = "text", error, icon, trailing, autoFocus }: Props) {
   const id = useId();
   const errId = useId();
   const [focused, setFocused] = useState(false);
@@ -40,6 +41,7 @@ export function FloatingLabelInput({ label, value, onChange, type = "text", erro
         <input
           id={id}
           type={type}
+          autoFocus={autoFocus}
           aria-label={label}
           aria-invalid={!!error}
           aria-describedby={error ? errId : undefined}

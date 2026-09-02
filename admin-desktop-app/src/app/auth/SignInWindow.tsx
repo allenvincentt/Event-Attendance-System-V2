@@ -43,6 +43,7 @@ export function SignInWindow() {
           <span style={{ opacity: 0.85 }}>Event Attendance System</span>
         </div>
         <motion.form
+          aria-label="Sign in"
           animate={shake}
           onSubmit={(e) => { e.preventDefault(); void submit(); }}
           style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: tokens.space.md, padding: tokens.space["2xl"] }}
@@ -51,7 +52,7 @@ export function SignInWindow() {
             <h1 style={{ margin: 0, fontSize: tokens.font.size.h2, color: tokens.color.text.strong }}>Welcome back</h1>
             <p style={{ margin: 0, color: tokens.color.text.muted, fontSize: tokens.font.size.bodySm }}>Sign in to manage events and attendance.</p>
           </div>
-          <FloatingLabelInput label="Username" value={username} onChange={setUsername} icon="user" />
+          <FloatingLabelInput label="Username" value={username} onChange={setUsername} icon="user" autoFocus />
           <FloatingLabelInput
             label="Password"
             type={showPw ? "text" : "password"}
