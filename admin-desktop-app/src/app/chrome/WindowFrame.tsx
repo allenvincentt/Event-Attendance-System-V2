@@ -20,6 +20,7 @@ const DIRS: { dir: ResizeDir; style: React.CSSProperties }[] = [
 interface Props {
   title: ReactNode;
   titleBarRight?: ReactNode;
+  titleBarHeight?: number;
   resizable?: boolean;
   showMaximize?: boolean;
   onMinimize?: () => void;
@@ -28,7 +29,7 @@ interface Props {
 }
 
 export function WindowFrame({
-  title, titleBarRight, resizable = true, showMaximize = true, onMinimize, onClose, children,
+  title, titleBarRight, titleBarHeight, resizable = true, showMaximize = true, onMinimize, onClose, children,
 }: Props) {
   const { contentProps, isMaximized, beginMinimize, toggleMaximize } = useWindowChoreography();
   const radius = isMaximized ? 0 : tokens.radius.lg;
@@ -45,6 +46,7 @@ export function WindowFrame({
       <TitleBar
         title={title}
         right={titleBarRight}
+        height={titleBarHeight ?? 40}
         showMaximize={showMaximize}
         isMaximized={isMaximized}
         onToggleMaximize={toggleMaximize}

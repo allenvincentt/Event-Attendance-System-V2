@@ -9,6 +9,27 @@ export type ResizeDir =
 const cur = () => getCurrentWindow();
 
 export const getWindowLabel = () => cur().label;
+
+export function parseWindowContext(): {
+  kind: "signin" | "main" | "attendees";
+  eventId?: string;
+  deptCode?: string;
+  session?: Session;
+} {
+  const label = (() => { try { return getWindowLabel(); } catch { return "main"; } })();
+  const q = new URLSearchParams(typeof location !== "undefined" ? location.search : "");
+  const w = q.get("w") ?? label;
+  if (w === "signin") return { kind: "signin" };
+  if (w.startsWith("attendees")) {
+    return {
+      kind: "attendees",
+      eventId: q.get("event") ?? undefined,
+      deptCode: q.get("dept") ?? undefined,
+      session: (q.get("session") as Session) ?? undefined,
+    };
+  }
+  return { kind: "main" };
+}
 export const minimizeWindow = () => cur().minimize();
 export const toggleMaximizeWindow = () => cur().toggleMaximize();
 export const closeWindow = () => cur().close();
