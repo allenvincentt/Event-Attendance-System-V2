@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "UD Event Attendance",
   "version": "0.1.0",
-  "identifier": "com.ud.event-attendance",
+  "identifier": "com.attendancesystem.admin-desktop-app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,22 +12,32 @@
   "app": {
     "windows": [
       {
-        "label": "signin",
-        "title": "Sign in",
+        "label": "main",
+        "title": "",
         "width": 800,
         "height": 500,
         "resizable": false,
         "maximizable": false,
         "decorations": false,
+        "transparent": true,
+        "shadow": true,
         "center": true,
-        "shadow": true
+        "focus": true
       }
     ],
-    "security": { "csp": null }
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   }
 }

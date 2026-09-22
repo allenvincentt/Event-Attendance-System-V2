@@ -1,60 +1,111 @@
-import { hashString, mulberry32, pick, randInt } from "./rng";
-import { DEPARTMENT_CODES } from "./departments";
-import type { Student } from "./types";
+import type { Department, Student } from "../models";
+import { DEPARTMENTS } from "./departments";
+import { createRng, hashSeed, randInt } from "./rng";
+
+export const ROSTER_SIZE = 312;
 
 const SURNAMES = [
-  "Abad", "Alcantara", "Bautista", "Cabrera", "Castillo", "Cruz", "Dela", "Domingo",
-  "Espinosa", "Fernandez", "Garcia", "Gonzales", "Hernandez", "Ilagan", "Jimenez",
-  "Lazaro", "Mendoza", "Navarro", "Ocampo", "Pascual", "Quinto", "Ramos", "Reyes",
-  "Santos", "Tolentino", "Uy", "Villanueva", "Ventura", "Yap", "Zamora",
-];
-const GIVEN = [
-  "Aaron", "Althea", "Andrei", "Bianca", "Carlo", "Camille", "Daniel", "Dianne",
-  "Ethan", "Erika", "Francis", "Gabriela", "Hannah", "Ivan", "Jasmine", "Kyla",
-  "Liam", "Mika", "Neil", "Olivia", "Paolo", "Rhea", "Rico", "Sofia", "Tristan",
-  "Ulysses", "Valerie", "Wyatt", "Xander", "Yuri", "Zoe",
+  "Abad", "Abalos", "Acosta", "Aguilar", "Alcantara", "Alonzo", "Alvarez",
+  "Andrada", "Aquino", "Arellano", "Bautista", "Belmonte", "Bernardo",
+  "Buenaventura", "Cabrera", "Calderon", "Castillo", "Cordero", "Cruz",
+  "Dela Cruz", "Del Rosario", "Diaz", "Domingo", "Escobar", "Espinosa",
+  "Estrada", "Fajardo", "Fernandez", "Flores", "Gabriel", "Garcia",
+  "Gonzales", "Guerrero", "Hernandez", "Ilagan", "Jimenez", "Lagman",
+  "Lazaro", "Macaraeg", "Magbanua", "Manalo", "Mendoza", "Montemayor",
+  "Morales", "Navarro", "Ocampo", "Padilla", "Panganiban", "Pascual",
+  "Quiambao", "Ramos", "Reyes", "Rivera", "Robles", "Salazar", "Samson",
+  "Santiago", "Santos", "Sarmiento", "Solis", "Tolentino", "Torres",
+  "Valdez", "Velasco", "Villanueva", "Ybanez", "Zamora",
 ];
 
-export const SECTIONS_BY_DEPT: Record<string, readonly string[]> = {
-  BED: ["GRADE11-1B", "GRADE11-2A", "GRADE11-3B", "GRADE12-1C", "GRADE12-2C", "GRADE12-3C"],
-  CAE: ["BSA-1A", "BSA-2B", "BSA-3A", "BSA-4B", "BSMA-2A"],
-  CAFAE: ["BSARCH-1A", "BSARCH-2B", "BSARCH-4B", "BFA-2A", "BSID-3A"],
-  CASE: ["ABPSY-1B", "ABPSY-3C", "BSBIO-2B", "ABCOM-2A", "ABENG-4A"],
-  CCE: ["BSCS-2A", "BSIT-1C", "BSIS-3A", "BSCS-4B", "BSIT-3A"],
-  CCJE: ["BSCRIM-1A", "BSCRIM-2C", "BSCRIM-3B", "BSCRIM-4A"],
-  CEE: ["BSCE-1B", "BSEE-2C", "BSEE-3C", "BSME-1A", "BSCE-3A"],
-  CHE: ["BSHM-1A", "BSTM-3A", "BSHM-2B", "BSTM-4A"],
-  CHSE: ["BSN-1A", "BSN-2B", "BSPHARM-3A", "BSMT-2A"],
-  CTE: ["BSED-2B", "BEED-4A", "BSED-1A", "BPED-3B", "BECED-2A"],
-  PS: ["MBA-1A", "MPA-2A", "PHD-ED-1A"],
-  TS: ["TECHVOC-1A", "TECHVOC-2A", "AUTOMECH-1B", "ELECTECH-2A"],
-};
+const GIVEN_NAMES = [
+  "Aaron", "Adrian", "Althea", "Andrei", "Angelo", "Bea", "Bianca", "Camille",
+  "Carlo", "Cielo", "Daniel", "Danica", "Dianne", "Elijah", "Erika", "Ethan",
+  "Faith", "Francis", "Gabriela", "Gerard", "Hannah", "Ivan", "Jasmine",
+  "Jerome", "Joana", "Kyla", "Lance", "Liam", "Mariel", "Miguel", "Neil",
+  "Nicole", "Patricia", "Rafael", "Rhea", "Rico", "Samantha", "Sofia",
+  "Trisha", "Vince", "Yuri", "Zeus",
+];
 
-function generate(): Student[] {
-  const rand = mulberry32(hashString("ud-roster-v1"));
-  const out: Student[] = [];
-  const usedIds = new Set<string>();
-  // even-ish distribution: 26 per department * 12 = 312
-  for (const code of DEPARTMENT_CODES) {
-    const sections = SECTIONS_BY_DEPT[code];
-    for (let i = 0; i < 26; i++) {
-      let id: string;
-      do {
-        id = `20${randInt(rand, 21, 24)}-${randInt(rand, 100000, 999999)}`;
-      } while (usedIds.has(id));
-      usedIds.add(id);
-      out.push({
-        id,
-        name: `${pick(rand, SURNAMES)}, ${pick(rand, GIVEN)}`,
-        departmentCode: code,
-        section: pick(rand, sections),
-      });
-    }
+const SECTION_LETTERS = ["A", "B", "C"];
+
+function allocate(departments: Department[], total: number): number[] {
+  const sum = departments.reduce((acc, d) => acc + d.enrolled, 0);
+  const exact = departments.map((d) => (d.enrolled / sum) * total);
+  const floors = exact.map(Math.floor);
+  let remaining = total - floors.reduce((a, b) => a + b, 0);
+
+  const order = exact
+    .map((value, index) => ({ index, frac: value - Math.floor(value) }))
+    .sort((a, b) => b.frac - a.frac);
+
+  const counts = floors.slice();
+  for (const { index } of order) {
+    if (remaining <= 0) break;
+    counts[index] += 1;
+    remaining -= 1;
   }
-  return out.sort((a, b) => a.name.localeCompare(b.name));
+  return counts;
 }
 
-export const STUDENTS: readonly Student[] = generate();
+function biasedIndex(rng: () => number, length: number): number {
+  const r = rng();
+  return Math.min(length - 1, Math.floor(r * r * length));
+}
 
-export const studentsByDepartment = (code: string) =>
-  STUDENTS.filter((s) => s.departmentCode === code);
+function buildSection(department: Department, rng: () => number): string {
+  const program = department.programs[randInt(rng, 0, department.programs.length - 1)];
+  const maxYear = department.id === "BED" ? 3 : department.id === "PS" ? 2 : 4;
+  const year = randInt(rng, 1, maxYear);
+  const letter = SECTION_LETTERS[randInt(rng, 0, SECTION_LETTERS.length - 1)];
+  return `${program}-${year}${letter}`;
+}
+
+function buildStudents(): Student[] {
+  const counts = allocate(DEPARTMENTS, ROSTER_SIZE);
+  const students: Student[] = [];
+
+  DEPARTMENTS.forEach((department, deptIndex) => {
+    const rng = createRng(hashSeed(`roster:${department.id}`));
+    const count = counts[deptIndex];
+
+    for (let i = 0; i < count; i += 1) {
+      const surname = SURNAMES[biasedIndex(rng, SURNAMES.length)];
+      const given = GIVEN_NAMES[randInt(rng, 0, GIVEN_NAMES.length - 1)];
+      const entryYear = randInt(rng, 2021, 2024);
+      const serial = String(randInt(rng, 100000, 999999));
+
+      students.push({
+        id: `${department.id}-${String(i).padStart(3, "0")}`,
+        name: `${surname}, ${given}`,
+        studentNumber: `${entryYear}-${serial}`,
+        departmentId: department.id,
+        section: buildSection(department, rng),
+      });
+    }
+  });
+
+  return students.sort(
+    (a, b) =>
+      a.name.localeCompare(b.name, "en") ||
+      a.studentNumber.localeCompare(b.studentNumber),
+  );
+}
+
+export const STUDENTS: Student[] = buildStudents();
+
+const BY_DEPARTMENT = STUDENTS.reduce<Record<string, Student[]>>(
+  (acc, student) => {
+    (acc[student.departmentId] ??= []).push(student);
+    return acc;
+  },
+  {},
+);
+
+export function studentsOfDepartment(departmentId: string): Student[] {
+  return BY_DEPARTMENT[departmentId] ?? [];
+}
+
+export function getStudent(id: string): Student | undefined {
+  return STUDENTS.find((s) => s.id === id);
+}

@@ -1,85 +1,112 @@
-import { hashString, mulberry32, pick, randInt } from "./rng";
-import { EVENT_OVERALL_RATE, eventById } from "./events";
-import { SECTIONS_BY_DEPT } from "./students";
-import type { AttendeeRecord, DepartmentAttendance, Session } from "./types";
+import type { AttendanceState, SessionKey } from "../enums";
+import type { AttendanceRecord, Student } from "../models";
+import { getEvent, getTurnout } from "./events";
+import { createRng, hashSeed, randInt, shuffle } from "./rng";
+import { studentsOfDepartment } from "./students";
 
-const SURNAMES = ["Abad", "Alcantara", "Cabrera", "Cruz", "Domingo", "Garcia", "Ilagan", "Mendoza", "Ramos", "Reyes", "Santos", "Tolentino", "Villanueva", "Yap"];
-const GIVEN = ["Aaron", "Althea", "Andrei", "Bianca", "Camille", "Daniel", "Dianne", "Ethan", "Neil", "Rhea", "Rico", "Sofia"];
+export interface AttendanceRow extends AttendanceRecord {
+  student: Student;
 
-// Canonical, hand-set figures for the reference event.
-export const EVENT_ATTENDANCE: Record<string, Record<string, { invited: number; attended: number }>> = {
-  "nightly-cultural-show": {
-    BED: { invited: 742, attended: 467 },
-    CTE: { invited: 509, attended: 310 },
-    CAFAE: { invited: 456, attended: 324 },
-  },
-};
-
-// Base per-department "enrolment" used to synthesise invited counts for other events.
-const BASE_ENROLMENT: Record<string, number> = {
-  BED: 742, CAE: 388, CAFAE: 456, CASE: 512, CCE: 604, CCJE: 470,
-  CEE: 559, CHE: 333, CHSE: 291, CTE: 509, PS: 176, TS: 214,
-};
-
-export const departmentEnrolment = (code: string) => BASE_ENROLMENT[code] ?? 300;
-
-function figuresFor(eventId: string, deptCode: string) {
-  const hand = EVENT_ATTENDANCE[eventId]?.[deptCode];
-  if (hand) return hand;
-  const invited = BASE_ENROLMENT[deptCode] ?? 300;
-  const attended = Math.round(invited * (EVENT_OVERALL_RATE[eventId] ?? 0.55));
-  return { invited, attended };
+  duration: number | null;
 }
 
-export function getDepartmentAttendance(eventId: string, session: Session): DepartmentAttendance[] {
-  const e = eventById(eventId);
-  return e.departmentCodes.map((code) => {
-    const { invited, attended } = figuresFor(eventId, code);
-    // sessions with no schedule contribute nothing
-    const scheduled = e.sessions.some((s) => s.session === session);
-    return { departmentCode: code, invited, attended: scheduled ? attended : 0 };
-  });
+export interface AttendanceSheet {
+  eventId: string;
+  departmentId: string;
+  session: SessionKey;
+  rows: AttendanceRow[];
+  total: number;
+  timedIn: number;
+  withoutTimeout: number;
+  absent: number;
 }
 
-export function getAttendees(eventId: string, session: Session, deptCode: string): AttendeeRecord[] {
-  const e = eventById(eventId);
-  const { invited, attended } = figuresFor(eventId, deptCode);
-  const scheduled = e.sessions.some((s) => s.session === session);
-  const effectiveAttended = scheduled ? attended : 0;
-  const rand = mulberry32(hashString(`${eventId}|${session}|${deptCode}|v1`));
-  const sched = e.sessions.find((s) => s.session === session);
-  const [sh, sm] = (sched?.start ?? "08:00").split(":").map(Number);
-  const [eh, em] = (sched?.end ?? "12:00").split(":").map(Number);
-  const sessionStart = new Date(`${e.date}T00:00:00`); sessionStart.setHours(sh, sm, 0, 0);
-  const sessionEnd = new Date(`${e.date}T00:00:00`); sessionEnd.setHours(eh, em, 0, 0);
-  const windowMin = (sessionEnd.getTime() - sessionStart.getTime()) / 60000;
-  const sections = SECTIONS_BY_DEPT[deptCode] ?? ["SEC-1A"];
+const NO_TIMEOUT_SHARE = 0.18;
 
-  const rows: AttendeeRecord[] = [];
-  for (let i = 0; i < invited; i++) {
-    const attendedThis = i < effectiveAttended;
-    let timeIn: string | null = null;
-    let timeOut: string | null = null;
-    let status: AttendeeRecord["status"] = "absent";
-    if (attendedThis) {
-      const inOffset = randInt(rand, -10, 45); // minutes around start
-      const tIn = new Date(sessionStart.getTime() + inOffset * 60000);
-      timeIn = tIn.toISOString();
-      if (rand() < 0.85) {
-        const outOffset = randInt(rand, Math.max(30, windowMin - 60), windowMin + 5);
-        timeOut = new Date(sessionStart.getTime() + outOffset * 60000).toISOString();
-        status = "present";
-      } else {
-        status = "no-timeout";
-      }
+const cache = new Map<string, AttendanceSheet>();
+
+export function getAttendanceSheet(
+  eventId: string,
+  departmentId: string,
+  session: SessionKey,
+): AttendanceSheet {
+  const key = `${eventId}|${departmentId}|${session}`;
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  const event = getEvent(eventId);
+  const students = studentsOfDepartment(departmentId);
+  const schedule = event?.sessions.find((s) => s.key === session);
+  const turnout = getTurnout(eventId);
+  const dept = turnout?.departments.find((d) => d.departmentId === departmentId);
+
+  const rate = dept && dept.enrolled > 0 ? dept.attended / dept.enrolled : 0;
+  const total = students.length;
+  const timedIn = Math.round(total * rate);
+  const withoutTimeout = timedIn > 0 ? Math.round(timedIn * NO_TIMEOUT_SHARE) : 0;
+
+  const rng = createRng(hashSeed(key));
+
+  const order = shuffle(
+    rng,
+    students.map((_, index) => index),
+  );
+  const attendedSet = new Set(order.slice(0, timedIn));
+  const noTimeoutSet = new Set(order.slice(timedIn - withoutTimeout, timedIn));
+
+  const start = schedule?.start ?? 480;
+  const end = schedule?.end ?? 720;
+
+  const arrivalWindow = Math.max(10, Math.round((end - start) * 0.2));
+  const departureWindow = Math.max(10, Math.round((end - start) * 0.18));
+
+  const rows: AttendanceRow[] = students.map((student, index) => {
+    if (!attendedSet.has(index)) {
+      return {
+        student,
+        studentId: student.id,
+        timeIn: null,
+        timeOut: null,
+        duration: null,
+        state: "absent" as AttendanceState,
+      };
     }
-    rows.push({
-      studentId: `${randInt(rand, 2021, 2024)}-${randInt(rand, 100000, 999999)}`,
-      name: `${pick(rand, SURNAMES)}, ${pick(rand, GIVEN)}`,
-      section: pick(rand, sections),
-      departmentCode: deptCode,
-      timeIn, timeOut, status,
-    });
-  }
-  return rows.sort((a, b) => a.name.localeCompare(b.name));
+
+    const timeIn = start + randInt(rng, 0, arrivalWindow);
+
+    if (noTimeoutSet.has(index)) {
+      return {
+        student,
+        studentId: student.id,
+        timeIn,
+        timeOut: null,
+        duration: null,
+        state: "no-timeout" as AttendanceState,
+      };
+    }
+
+    const timeOut = Math.max(timeIn + 20, end - randInt(rng, 0, departureWindow));
+    return {
+      student,
+      studentId: student.id,
+      timeIn,
+      timeOut,
+      duration: timeOut - timeIn,
+      state: "present" as AttendanceState,
+    };
+  });
+
+  const sheet: AttendanceSheet = {
+    eventId,
+    departmentId,
+    session,
+    rows,
+    total,
+    timedIn,
+    withoutTimeout,
+    absent: total - timedIn,
+  };
+
+  cache.set(key, sheet);
+  return sheet;
 }

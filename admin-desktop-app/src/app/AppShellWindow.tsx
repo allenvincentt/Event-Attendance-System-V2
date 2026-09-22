@@ -1,42 +1,89 @@
-import { AnimatePresence, motion } from "framer-motion";
-import React, { useState } from "react";
-import { WindowFrame } from "@/app/chrome/WindowFrame";
-import { Sidebar, type AppView } from "@/app/shell/Sidebar";
-import { TopBar } from "@/app/shell/TopBar";
-import { DashboardView } from "@/app/views/DashboardView";
-import { EventView } from "@/app/views/EventView";
-import { StudentManagementView } from "@/app/views/StudentManagementView";
-import { tokens } from "@/app/theme/tokens";
-import { viewSwitch } from "@/app/motion/transitions";
-import { closeWindow, openSignInWindow } from "@/app/lib/window";
+import { useCallback, useState } from "react";
+import { Sidebar, type ViewKey } from "./shell/Sidebar";
+import { TopBar } from "./shell/TopBar";
+import { DashboardView } from "./views/DashboardView";
+import { EventView } from "./views/EventView";
+import { StudentManagementView } from "./views/StudentManagementView";
+import { WindowFrame } from "../components/window/WindowFrame";
+import { ADMIN_USER } from "../data/selectors";
+import { registerStyle } from "../lib/registerStyle";
 
-const VIEWS: Record<AppView, () => React.JSX.Element> = {
-  dashboard: DashboardView,
-  events: EventView,
-  students: StudentManagementView,
-};
+registerStyle(
+  "app-shell",
+  `
+.ud-shell {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
 
-export function AppShellWindow() {
-  const [view, setView] = useState<AppView>("dashboard");
+.ud-shell__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.ud-shell__content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-6) var(--space-6) var(--space-7);
+}
+
+.ud-shell__view {
+  animation: ud-view-in var(--dur-slower) var(--ease-out);
+}
+
+@keyframes ud-view-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+`,
+);
+
+export interface AppShellWindowProps {
+  onSignOut: () => void;
+}
+
+export function AppShellWindow({ onSignOut }: AppShellWindowProps) {
+  const [view, setView] = useState<ViewKey>("dashboard");
   const [collapsed, setCollapsed] = useState(false);
-  const Active = VIEWS[view];
-  const signOut = async () => { await openSignInWindow(); await closeWindow(); };
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  const refresh = useCallback(() => setRefreshToken((token) => token + 1), []);
 
   return (
-    <WindowFrame
-      title="Event Attendance System"
-      titleBarHeight={52}
-      titleBarRight={<TopBar onRefresh={() => location.reload()} userName="Administrator" userRole="Events Office" onSignOut={signOut} />}
-    >
-      <div style={{ display: "flex", height: "100%", background: tokens.color.surface.canvas }}>
-        <Sidebar view={view} onNavigate={setView} collapsed={collapsed} onToggleCollapsed={() => setCollapsed((c) => !c)} onSignOut={signOut} />
-        <main style={{ flex: 1, minWidth: 0, overflow: "auto", padding: `${tokens.space.xl}px ${tokens.space["2xl"]}px` }}>
-          <AnimatePresence mode="wait">
-            <motion.div key={view} variants={viewSwitch} initial="initial" animate="animate" exit="exit">
-              <Active />
-            </motion.div>
-          </AnimatePresence>
-        </main>
+    <WindowFrame>
+      <div className="ud-shell">
+        <Sidebar
+          current={view}
+          onNavigate={setView}
+          collapsed={collapsed}
+          onToggleCollapse={() => setCollapsed((value) => !value)}
+          onSignOut={onSignOut}
+        />
+
+        <div className="ud-shell__main">
+          <TopBar user={ADMIN_USER} onRefresh={refresh} />
+
+          <main className="ud-shell__content">
+            <div className="ud-shell__view" key={`${view}-${refreshToken}`}>
+              {view === "dashboard" ? <DashboardView /> : null}
+              {view === "events" ? <EventView /> : null}
+              {view === "students" ? <StudentManagementView /> : null}
+            </div>
+          </main>
+        </div>
       </div>
     </WindowFrame>
   );

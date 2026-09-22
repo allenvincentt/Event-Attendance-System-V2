@@ -1,100 +1,406 @@
-import { motion } from "framer-motion";
-import { useState } from "react";
-import { Card } from "@/app/components/Card";
-import { KpiCard } from "@/app/components/KpiCard";
-import { ProgressBar } from "@/app/components/ProgressBar";
-import { Reveal } from "@/app/motion/Reveal";
-import { Select } from "@/app/components/Select";
-import { AttendanceTrendChart } from "@/app/charts/AttendanceTrendChart";
-import { DepartmentBarChart } from "@/app/charts/DepartmentBarChart";
-import { DonutChart } from "@/app/charts/DonutChart";
-import { RankingBars } from "@/app/charts/RankingBars";
-import { useDashboard, useEvents } from "@/data/MockDataProvider";
-import { staggerContainer } from "@/app/motion/transitions";
-import { tokens } from "@/app/theme/tokens";
-import { formatDateShort, formatNumber, formatPercent } from "@/app/lib/format";
+import { useMemo, useState } from "react";
+import { Card, CardBody, CardHeader } from "../../components/ui/Card";
+import { KpiCard } from "../../components/ui/KpiCard";
+import { Select } from "../../components/ui/Field";
+import { Icon, type IconName } from "../../components/ui/Icon";
+import { ProgressBar } from "../../components/ui/ProgressBar";
+import { DonutChart } from "../../components/charts/DonutChart";
+import { DepartmentBarChart } from "../../components/charts/DepartmentBarChart";
+import { AttendanceTrendChart } from "../../components/charts/AttendanceTrendChart";
+import { RankingBars } from "../../components/charts/RankingBars";
+import { ScrollReveal } from "../../components/common/motion/ScrollReveal";
+import { EmptyState } from "../../components/ui/EmptyState";
+import {
+  buildDashboardMetrics,
+  buildTrend,
+  sortedEvents,
+} from "../../data/selectors";
+import { EVENT_STATUS_LABEL, SESSION_LABEL, type SessionKey } from "../../enums";
+import { formatDateShort, formatNumber } from "../../lib/format";
+import { registerStyle } from "../../lib/registerStyle";
 
-const SESSION_LABEL: Record<string, string> = { morning: "Morning", afternoon: "Afternoon", evening: "Evening" };
+registerStyle(
+  "dashboard",
+  `
+.ud-dash {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.ud-dash__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+.ud-dash__title {
+  font-size: var(--fs-24);
+  font-weight: var(--fw-bold);
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+
+.ud-dash__subtitle {
+  margin-top: 2px;
+  font-size: var(--fs-13);
+  color: var(--text-muted);
+}
+
+.ud-dash__picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+}
+
+.ud-dash__picker-label {
+  font-size: var(--fs-13);
+  color: var(--text-secondary);
+}
+
+.ud-dash__picker .ud-select {
+  width: 300px;
+}
+
+.ud-dash__kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.ud-dash__split {
+  display: grid;
+  grid-template-columns: minmax(340px, 1fr) minmax(0, 1.75fr);
+  gap: var(--space-4);
+  align-items: stretch;
+}
+
+.ud-dash__split--even {
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr);
+}
+
+.ud-dash__turnout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.ud-dash__legend {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ud-dash__legend-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--fs-13);
+  color: var(--text-secondary);
+}
+
+.ud-dash__legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.ud-dash__legend-value {
+  margin-left: auto;
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ud-dash__sessions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--surface-alt);
+}
+
+.ud-dash__session {
+  display: grid;
+  grid-template-columns: 18px 76px 1fr 40px;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+}
+
+.ud-dash__session[data-off="true"] {
+  color: var(--text-faint);
+}
+
+.ud-dash__session-icon {
+  display: grid;
+  place-items: center;
+  color: var(--text-faint);
+}
+
+.ud-dash__session[data-off="false"] .ud-dash__session-icon {
+  color: var(--brand);
+}
+
+.ud-dash__session-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+
+.ud-dash__session[data-off="true"] .ud-dash__session-value {
+  color: var(--text-faint);
+  font-weight: var(--fw-regular);
+}
+
+.ud-dash__hint {
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+`,
+);
+
+const SESSION_ICON: Record<SessionKey, IconName> = {
+  morning: "sunrise",
+  afternoon: "sun",
+  evening: "moon",
+};
 
 export function DashboardView() {
-  const { events } = useEvents();
-  const [eventId, setEventId] = useState(events[0]?.id ?? "nightly-cultural-show");
-  const d = useDashboard(eventId);
-  const event = events.find((e) => e.id === eventId);
-  const h3 = { fontSize: tokens.font.size.subtitle, fontWeight: tokens.font.weight.bold, margin: 0 };
+  const events = useMemo(() => sortedEvents(), []);
+  const [eventId, setEventId] = useState(events[0]?.id ?? "");
+
+  const metrics = useMemo(() => buildDashboardMetrics(eventId), [eventId]);
+  const trend = useMemo(() => buildTrend(), []);
+
+  const options = useMemo(
+    () =>
+      events.map((event) => ({
+        value: event.id,
+        label: event.name,
+        meta: formatDateShort(event.date),
+      })),
+    [events],
+  );
+
+  if (!metrics) {
+    return (
+      <EmptyState
+        icon="calendar"
+        title="No event selected"
+        description="Create an event to start recording attendance."
+      />
+    );
+  }
+
+  const { event, invited, present, rate, series, ranking, sessions } = metrics;
+  const activeSessions = sessions.filter((session) => session.enabled);
+  const absent = invited - present;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: tokens.space.xl }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: tokens.space.md, flexWrap: "wrap" }}>
+    <div className="ud-dash">
+      <header className="ud-dash__head">
         <div>
-          <h1 style={{ margin: 0, fontSize: tokens.font.size.h1, color: tokens.color.text.strong }}>Attendance overview</h1>
-          <p style={{ margin: 0, color: tokens.color.text.muted }}>Live figures for the event you select.</p>
+          <h1 className="ud-dash__title">Attendance overview</h1>
+          <p className="ud-dash__subtitle">Live figures for the event you select.</p>
         </div>
-        <Select
-          ariaLabel="Event"
-          value={eventId}
-          onChange={setEventId}
-          options={events.map((e) => ({ value: e.id, label: e.name, hint: formatDateShort(new Date(`${e.date}T00:00:00`)) }))}
-        />
+        <div className="ud-dash__picker">
+          <span className="ud-dash__picker-label">Event</span>
+          <Select
+            label="Select event"
+            value={eventId}
+            options={options}
+            onChange={setEventId}
+            size="lg"
+          />
+        </div>
       </header>
 
-      <motion.div variants={staggerContainer} initial="initial" animate="animate" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: tokens.space.md }}>
-        <KpiCard label="Attendance rate" value={d.attendanceRate} format={(n) => formatPercent(n)} footnote={`${event ? event.status[0].toUpperCase() + event.status.slice(1) : ""} · ${event?.sessions.map((s) => SESSION_LABEL[s.session]).join(", ")}`} accent={tokens.color.brand.primary} icon="arrowUp" />
-        <KpiCard label="Students present" value={d.studentsPresent} footnote={`of ${formatNumber(d.studentsInvited)} invited`} accent={tokens.color.status.success.base} icon="users" />
-        <KpiCard label="Departments" value={d.departmentsParticipating} footnote={`of ${d.departmentsTotal} in the university`} accent={tokens.color.status.info.base} icon="dashboard" />
-        <KpiCard label="Events this term" value={d.eventsThisTerm} footnote={`${d.eventsUpcoming} upcoming · ${d.eventsCompleted} completed`} accent={tokens.color.status.neutral.base} icon="calendar" />
-      </motion.div>
+      <ScrollReveal className="ud-dash__kpis" duration={520}>
+        <KpiCard
+          label="Attendance rate"
+          value={rate}
+          unit="%"
+          decimals={1}
+          icon="trending-up"
+          tone="brand"
+          delay={0}
+          meta={
+            <>
+              {EVENT_STATUS_LABEL[event.status]}
+              {activeSessions.length > 0 ? (
+                <>
+                  {" \u00b7 "}
+                  {activeSessions.map((s) => SESSION_LABEL[s.key]).join(", ")}
+                </>
+              ) : null}
+            </>
+          }
+        />
+        <KpiCard
+          label="Students present"
+          value={present}
+          icon="users"
+          tone="success"
+          delay={80}
+          meta={<>of {formatNumber(invited)} invited</>}
+        />
+        <KpiCard
+          label="Departments"
+          value={metrics.departmentCount}
+          icon="building"
+          tone="accent"
+          delay={160}
+          meta={<>of {metrics.totalDepartments} in the university</>}
+        />
+        <KpiCard
+          label="Events this term"
+          value={metrics.eventCount}
+          icon="calendar-days"
+          tone="info"
+          delay={240}
+          meta={
+            <>
+              {metrics.upcomingCount} upcoming {"\u00b7"} {metrics.completedCount}{" "}
+              completed
+            </>
+          }
+        />
+      </ScrollReveal>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: tokens.space.md }}>
-        <Reveal><Card>
-          <h3 style={h3}>Overall turnout</h3>
-          <div style={{ display: "flex", gap: tokens.space.lg, alignItems: "center", flexWrap: "wrap", marginTop: tokens.space.md }}>
-            <DonutChart attended={d.turnout.attended} absent={d.turnout.absent} />
-            <div style={{ flex: 1, minWidth: 180, display: "flex", flexDirection: "column", gap: tokens.space.xs }}>
-              <Legend color={tokens.color.brand.primary} label="Attended" value={formatNumber(d.turnout.attended)} />
-              <Legend color="#C9CBD1" label="Did not attend" value={formatNumber(d.turnout.absent)} />
-              <div style={{ marginTop: tokens.space.sm, display: "flex", flexDirection: "column", gap: tokens.space.xs }}>
-                {d.sessionSplit.map((s) => (
-                  <div key={s.session} style={{ display: "flex", alignItems: "center", gap: tokens.space.sm }}>
-                    <span style={{ width: 76, fontSize: tokens.font.size.sm, color: tokens.color.text.muted }}>{SESSION_LABEL[s.session]}</span>
-                    <div style={{ flex: 1 }}><ProgressBar value={s.rate} label={`${SESSION_LABEL[s.session]} turnout`} /></div>
-                    <span style={{ fontSize: tokens.font.size.sm, width: 44, textAlign: "right" }}>{s.scheduled ? formatPercent(s.rate, 0) : "—"}</span>
+      <ScrollReveal className="ud-dash__split" duration={560} delay={80}>
+        <Card>
+          <CardHeader
+            title="Overall turnout"
+            subtitle={
+              <>
+                {formatDateShort(event.date)} {"\u00b7"} {event.venue}
+              </>
+            }
+          />
+          <CardBody>
+            <div className="ud-dash__turnout">
+              <DonutChart value={rate} label="Overall turnout" />
+
+              <div className="ud-dash__legend">
+                <div className="ud-dash__legend-row">
+                  <span
+                    className="ud-dash__legend-dot"
+                    style={{ background: "var(--viz-attended)" }}
+                  />
+                  Attended
+                  <span className="ud-dash__legend-value">
+                    {formatNumber(present)}
+                  </span>
+                </div>
+                <div className="ud-dash__legend-row">
+                  <span
+                    className="ud-dash__legend-dot"
+                    style={{ background: "var(--viz-track)" }}
+                  />
+                  Did not attend
+                  <span className="ud-dash__legend-value">
+                    {formatNumber(Math.max(0, absent))}
+                  </span>
+                </div>
+              </div>
+
+              <div className="ud-dash__sessions">
+                {sessions.map((session) => (
+                  <div
+                    className="ud-dash__session"
+                    key={session.key}
+                    data-off={!session.enabled}
+                  >
+                    <span className="ud-dash__session-icon">
+                      <Icon name={SESSION_ICON[session.key]} size={15} />
+                    </span>
+                    <span>{SESSION_LABEL[session.key]}</span>
+                    <ProgressBar
+                      value={session.enabled ? session.rate : 0}
+                      size="xs"
+                      tone={session.enabled ? "brand" : "muted"}
+                      label={`${SESSION_LABEL[session.key]} attendance`}
+                    />
+                    <span className="ud-dash__session-value">
+                      {session.enabled ? `${Math.round(session.rate)}%` : "\u2014"}
+                    </span>
                   </div>
                 ))}
               </div>
             </div>
-          </div>
-        </Card></Reveal>
+          </CardBody>
+        </Card>
 
-        <Reveal><Card>
-          <h3 style={h3}>Students by department</h3>
-          <p style={{ margin: `0 0 ${tokens.space.sm}px`, color: tokens.color.text.muted, fontSize: tokens.font.size.sm }}>Enrolled head-count against those who attended.</p>
-          <DepartmentBarChart data={d.byDepartment} />
-        </Card></Reveal>
-      </div>
+        <Card>
+          <CardHeader
+            title="Students by department"
+            subtitle="Enrolled head-count against those who attended."
+            action="Hover a column for exact figures"
+          />
+          <CardBody>
+            <DepartmentBarChart
+              data={series.map((point) => ({
+                code: point.department.code,
+                name: point.department.name,
+                enrolled: point.enrolled,
+                attended: point.attended,
+              }))}
+            />
+          </CardBody>
+        </Card>
+      </ScrollReveal>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: tokens.space.md }}>
-        <Reveal><Card>
-          <h3 style={h3}>Attendance rate over recent events</h3>
-          <AttendanceTrendChart points={d.trend} />
-        </Card></Reveal>
-        <Reveal><Card>
-          <h3 style={h3}>Department ranking</h3>
-          <p style={{ margin: `0 0 ${tokens.space.md}px`, color: tokens.color.text.muted, fontSize: tokens.font.size.sm }}>Highest turnout first.</p>
-          <RankingBars rows={d.ranking} />
-        </Card></Reveal>
-      </div>
+      <ScrollReveal
+        className="ud-dash__split ud-dash__split--even"
+        duration={560}
+        delay={140}
+      >
+        <Card>
+          <CardHeader
+            title="Attendance rate over recent events"
+            subtitle="Share of invited students who timed in."
+          />
+          <CardBody>
+            {trend.length > 0 ? (
+              <AttendanceTrendChart data={trend} />
+            ) : (
+              <EmptyState
+                icon="trending-up"
+                title="No completed events yet"
+                description="The trend appears once an event has recorded attendance."
+              />
+            )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Department ranking" subtitle="Highest turnout first." />
+          <CardBody>
+            {ranking.length > 0 ? (
+              <RankingBars data={ranking} />
+            ) : (
+              <EmptyState
+                icon="building"
+                title="No departments assigned"
+                description="Add departments to this event to see a ranking."
+              />
+            )}
+          </CardBody>
+        </Card>
+      </ScrollReveal>
     </div>
   );
 }
 
-function Legend({ color, label, value }: { color: string; label: string; value: string }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: tokens.space.sm }}>
-      <span style={{ display: "flex", alignItems: "center", gap: tokens.space.xs, fontSize: tokens.font.size.bodySm }}>
-        <span style={{ width: 10, height: 10, borderRadius: 3, background: color }} />{label}
-      </span>
-      <strong style={{ fontSize: tokens.font.size.bodySm }}>{value}</strong>
-    </div>
-  );
-}
+export default DashboardView;
